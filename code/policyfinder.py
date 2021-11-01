@@ -31,13 +31,24 @@ def get_geo(url):
 
 
 def detect(website):
+    row = []
+    # name
+    row.append(website.get('name'))
+    # category
+    row.append(website.get('category'))
+    # company region
+    row.append(website.get('location'))
+    # host region
+    row.append(get_geo(website.get('url')))
+    # privacy policy region
+    row.append(get_geo(website.get('purl')))
     try:
-        html = urlopen(website.get('purl')).read()
+        html = urlopen(website.get('purl'), timeout=10).read()
         soup = BeautifulSoup(html, features="html.parser")
 
         # kill all script and style elements
         for script in soup(["script", "style"]):
-            script.extract()    # rip it out
+            script.extract()  # rip it out
 
         # get text
         text = soup.get_text()
@@ -48,23 +59,57 @@ def detect(website):
         chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
         # drop blank lines
         content = '\n'.join(chunk for chunk in chunks if chunk)
-
-        # result.save(output_dir='../data')
         matches = ["DNT", "Do Not Track", "do not track"]
         s = ''
+        dnt = 'No'
         mention = 'No'
-        for sentence in content.split('.'):
+        sts = content.split('.')
+        idx = 0
+        for sentence in sts:
             if any(x in sentence for x in matches):
-                print(sentence)
-                s += sentence
+                if idx != 0 and idx != len(sts) - 2:
+                    if not sts[idx - 1] in s:
+                        s += sts[idx - 1]
+                    if not sentence in s:
+                        s += sentence
+                    if not sts[idx + 1] in s:
+                        s += sts[idx + 1]
+                    if not sts[idx + 2] in s:
+                        s += sts[idx + 2]
                 mention = 'Yes'
+            idx += 1
+        # mention DNT?
+        row.append(mention)
+        # sentence
+        row.append(s)
+        if mention == 'Yes':
+            dnt = 'Yes'
+        dn_matches = ["do not support", "do not respond", "does not support", "doest not respond", "don't", "don’t"
+            , "do not recognize", "does not"]
+        if any(x in s for x in dn_matches):
+            dnt = 'No'
+        # support DNT?
+        row.append(dnt)
     except:
-        pass
+        row.append('No')
+        row.append('')
+        row.append('No')
+    return row
 
 
 if __name__ == "__main__":
     websites = []
     read_data('../data/websites.csv')
 
-    for site in websites:
-        r = detect(site)
+    # result = polipy.get_policy("https://www.nytimes.com/privacy/privacy-policy#what-information-do-we-gather-about-you", screenshot=True)
+    # result.save(output_dir='../data')
+    with open('../data/websites_data.csv', mode='w') as data:
+        data_writer = csv.writer(data, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+        # Write header
+        data_writer.writerow(
+            ['name', 'category', 'company_region', 'host_region', 'privacy_policy_region', 'mention_DNT', 'sentence',
+             'support_DNT'])
+        for site in websites:
+            r = detect(site)
+            print(r)
+            data_writer.writerow(r)
